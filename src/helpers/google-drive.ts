@@ -48,7 +48,19 @@ async function getAccessToken(env: Env, refreshToken: string): Promise<string> {
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: params.toString(),
   });
-  if (!res.ok) throw new Error("Failed to refresh access token");
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    console.error("Token refresh error:", errorText);
+
+    // If the error indicates an invalid or expired refresh token
+    if (res.status === 400 || res.status === 401) {
+      throw new Error("REFRESH_TOKEN_EXPIRED");
+    }
+
+    throw new Error("Failed to refresh access token");
+  }
+
   const data = (await res.json()) as { access_token: string };
   return data.access_token;
 }

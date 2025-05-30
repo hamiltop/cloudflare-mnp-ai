@@ -1,5 +1,5 @@
 import { requireAuth } from "@/helpers/auth";
-import { listFilesInDrive, downloadAsMarkdown } from "@/helpers/google-drive";
+import { listFilesInDrive, downloadAsMarkdown, getAuthUrl } from "@/helpers/google-drive";
 import { getUserDrive, updateUserDrive } from "@/models/user-drive";
 import { createDocument, updateDocumentByDriveFileId } from "@/models/document";
 import { getUser } from "@/models/user";
@@ -134,6 +134,23 @@ export const POST = async (
         driveId,
         userEmail: user.email,
       });
+
+      // If the error is due to an expired refresh token, redirect to reauthorize
+      if (err instanceof Error && err.message === "REFRESH_TOKEN_EXPIRED") {
+        const url = new URL(request.url);
+        const authUrl = getAuthUrl(`${url.origin}/api/admin/drives/connect`, env.GOOGLE_CLIENT_ID);
+        return new Response(
+          JSON.stringify({
+            error: "REFRESH_TOKEN_EXPIRED",
+            authUrl,
+          }),
+          {
+            status: 401,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }
+
       return new Response(
         JSON.stringify({
           error: "Failed to sync drive",

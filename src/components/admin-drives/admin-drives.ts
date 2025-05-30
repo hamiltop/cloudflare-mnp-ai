@@ -22,6 +22,7 @@ type SyncResponse = {
   };
   error?: string;
   details?: string;
+  authUrl?: string;
 };
 
 export default {
@@ -77,6 +78,13 @@ export default {
           statusText: res.statusText,
           data,
         });
+
+        // If the error is due to an expired refresh token, redirect to reauthorize
+        if (data.error === "REFRESH_TOKEN_EXPIRED" && data.authUrl) {
+          window.location.href = data.authUrl;
+          return;
+        }
+
         throw new Error(data.details || data.error || "Failed to sync drive");
       }
 
