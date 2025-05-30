@@ -21,6 +21,7 @@ type SyncResponse = {
     };
   };
   error?: string;
+  details?: string;
 };
 
 export default {
@@ -64,14 +65,20 @@ export default {
     this.syncing = true;
     this.error = null;
     try {
+      console.log("Starting sync for drive:", driveId);
       const res = await fetch(`/api/admin/drives/${driveId}/sync`, {
         method: "POST",
       });
-      if (!res.ok) {
-        const data = (await res.json()) as SyncResponse;
-        throw new Error(data.error || "Failed to sync drive");
-      }
       const data = (await res.json()) as SyncResponse;
+
+      if (!res.ok) {
+        console.error("Sync failed:", {
+          status: res.status,
+          statusText: res.statusText,
+          data,
+        });
+        throw new Error(data.details || data.error || "Failed to sync drive");
+      }
 
       // Log detailed Vectorize status
       console.log("Drive sync completed. Vectorize status:", {
@@ -89,7 +96,11 @@ export default {
 
       await this.fetchDrives();
     } catch (err) {
-      console.error("Sync error:", err);
+      console.error("Sync error:", {
+        error: err,
+        message: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      });
       this.error = err instanceof Error ? err.message : String(err);
     } finally {
       this.syncing = false;

@@ -127,17 +127,39 @@ export const POST = async (
         );
       }
     } catch (err) {
-      console.error("Drive sync error:", err);
-      return new Response(JSON.stringify({ error: "Failed to sync drive" }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
+      console.error("Drive sync error:", {
+        error: err,
+        message: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+        driveId,
+        userEmail: user.email,
       });
+      return new Response(
+        JSON.stringify({
+          error: "Failed to sync drive",
+          details: err instanceof Error ? err.message : String(err),
+        }),
+        {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
   } catch (err) {
-    console.error(err);
-    return new Response(JSON.stringify({ error: "Unauthorized or bad request" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
+    console.error("Auth error:", {
+      error: err,
+      message: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
     });
+    return new Response(
+      JSON.stringify({
+        error: "Unauthorized or bad request",
+        details: err instanceof Error ? err.message : String(err),
+      }),
+      {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   }
 };
