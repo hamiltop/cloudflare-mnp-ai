@@ -58,6 +58,7 @@ export type DriveFile = {
   name: string;
   modifiedTime: string;
   driveId: string;
+  mimeType: string;
 };
 
 export async function listFiles(env: Env, refreshToken: string): Promise<DriveFile[]> {
@@ -66,8 +67,12 @@ export async function listFiles(env: Env, refreshToken: string): Promise<DriveFi
     "https://www.googleapis.com/drive/v3/files?" +
       // show docs in My Drive or shared with you
       "corpora=allDrives&includeItemsFromAllDrives=true&" +
-      "q=trashed=false and mimeType='application/vnd.google-apps.document'&" +
-      "fields=files(id,name,modifiedTime)",
+      "q=trashed=false and (" +
+      "mimeType='application/vnd.google-apps.document' or " +
+      "mimeType='application/pdf' or " +
+      "mimeType='text/plain' or " +
+      "mimeType='application/vnd.openxmlformats-officedocument.wordprocessingml.document')&" +
+      "fields=files(id,name,modifiedTime,mimeType)",
     { headers: { Authorization: `Bearer ${accessToken}` } },
   );
   if (!res.ok) throw new Error("Failed to list files");
@@ -86,8 +91,15 @@ export async function listFilesInDrive(
   url.searchParams.set("driveId", driveId);
   url.searchParams.set("includeItemsFromAllDrives", "true");
   url.searchParams.set("supportsAllDrives", "true");
-  url.searchParams.set("q", "trashed=false and mimeType='application/vnd.google-apps.document'");
-  url.searchParams.set("fields", "files(id,name,modifiedTime)");
+  url.searchParams.set(
+    "q",
+    "trashed=false and (" +
+      "mimeType='application/vnd.google-apps.document' or " +
+      "mimeType='application/pdf' or " +
+      "mimeType='text/plain' or " +
+      "mimeType='application/vnd.openxmlformats-officedocument.wordprocessingml.document')",
+  );
+  url.searchParams.set("fields", "files(id,name,modifiedTime,mimeType)");
   const res = await fetch(url.toString(), {
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -103,33 +115,75 @@ export async function listFilesInDrive(
   return files;
 }
 
+export async function getFileMetadata(
+  env: Env,
+  fileId: string,
+  refreshToken: string,
+): Promise<{ name: string; mimeType: string }> {
+  const accessToken = await getAccessToken(env, refreshToken);
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${fileId}?fields=name,mimeType`,
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+  if (!res.ok) throw new Error("Failed to fetch file metadata");
+  return (await res.json()) as { name: string; mimeType: string };
+}
+
 export async function downloadAsMarkdown(
   env: Env,
   fileId: string,
   refreshToken: string,
 ): Promise<string> {
   const accessToken = await getAccessToken(env, refreshToken);
-  const res = await fetch(
-    `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/markdown`,
-    {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    },
-  );
-  if (!res.ok) throw new Error("Failed to download file as markdown");
-  return await res.text();
-}
+  const metadata = await getFileMetadata(env, fileId, refreshToken);
 
-export async function getFileMetadata(
-  env: Env,
-  fileId: string,
-  refreshToken: string,
-): Promise<{ name: string }> {
-  const accessToken = await getAccessToken(env, refreshToken);
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=name`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!res.ok) throw new Error("Failed to fetch file metadata");
-  return (await res.json()) as { name: string };
+  switch (metadata.mimeType) {
+    case "application/vnd.google-apps.document":
+      // Google Docs can be exported directly to markdown
+      const res = await fetch(
+        `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/markdown`,
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        },
+      );
+      if (!res.ok) throw new Error("Failed to download Google Doc as markdown");
+      return await res.text();
+
+    case "application/pdf":
+      // Use Google Drive's export API to convert PDF to text
+      const pdfRes = await fetch(
+        `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`,
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        },
+      );
+      if (!pdfRes.ok) throw new Error("Failed to convert PDF to text");
+      return await pdfRes.text();
+
+    case "text/plain":
+      // Download text file directly
+      const textRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!textRes.ok) throw new Error("Failed to download text file");
+      return await textRes.text();
+
+    case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+      // Use Google Drive's export API to convert Word document to text
+      const wordRes = await fetch(
+        `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`,
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        },
+      );
+      if (!wordRes.ok) throw new Error("Failed to convert Word document to text");
+      return await wordRes.text();
+
+    default:
+      throw new Error(`Unsupported file type: ${metadata.mimeType}`);
+  }
 }
 
 export type Drive = {
