@@ -31,9 +31,14 @@ async function scrapeAndIngest(url: string, env: Env): Promise<boolean> {
     // Basic content extraction (can be improved with a proper parser)
     const titleMatch = html.match(/<title>(.*?)<\/title>/i);
     const title = titleMatch ? titleMatch[1] : url;
-    const content = html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-                        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-                        .replace(/<[^>]*>/g, '')
+    // More sophisticated content extraction: try to get text from common content tags
+    // This is still basic and can be improved with a proper HTML parser if available in the environment
+    const content = (html.match(/<p[^>]*>([\s\S]*?)<\/p>/gi) || [])
+                        .concat(html.match(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/gi) || [])
+                        .concat(html.match(/<li[^>]*>([\s\S]*?)<\/li>/gi) || [])
+                        .map(tag => tag.replace(/<[^>]*>/g, '').trim())
+                        .filter(text => text.length > 0)
+                        .join('\n\n')
                         .replace(/\s+/g, ' ').trim();
 
     if (content.length === 0) {
@@ -76,10 +81,13 @@ router.post('/api/admin/sites/add', async (request: IRequest, env: Env) => {
     await createSite(env, { id: nanoid(), url });
     console.log(`Added site for scraping: ${url}`);
 
-    return new Response(`Site ${url} added successfully`, { status: 200 });
+    return new Response(JSON.stringify({ message: `Site ${url} added successfully` }), { status: 200 });
   } catch (error) {
     console.error('Error adding site:', error);
-    return new Response('Unauthorized', { status: 401 });
+    if (error.message === 'Unauthorized') {
+      return new Response('Unauthorized', { status: 401 });
+    }
+    return new Response('Error adding site', { status: 500 });
   }
 });
 
@@ -100,10 +108,13 @@ router.post('/api/admin/sites/remove', async (request: IRequest, env: Env) => {
 
     await deleteSite(env, siteToRemove.id);
     console.log(`Removed site: ${url}`);
-    return new Response(`Site ${url} removed successfully`, { status: 200 });
+    return new Response(JSON.stringify({ message: `Site ${url} removed successfully` }), { status: 200 });
   } catch (error) {
     console.error('Error removing site:', error);
-    return new Response('Unauthorized', { status: 401 });
+    if (error.message === 'Unauthorized') {
+      return new Response('Unauthorized', { status: 401 });
+    }
+    return new Response('Error removing site', { status: 500 });
   }
 });
 
@@ -118,7 +129,10 @@ router.get('/api/admin/sites/list', async (request: IRequest, env: Env) => {
     });
   } catch (error) {
     console.error('Error listing sites:', error);
-    return new Response('Unauthorized', { status: 401 });
+    if (error.message === 'Unauthorized') {
+      return new Response('Unauthorized', { status: 401 });
+    }
+    return new Response('Error listing sites', { status: 500 });
   }
 });
 
@@ -164,7 +178,10 @@ router.post('/api/admin/sites/scrape', async (request: IRequest, env: Env) => {
     });
   } catch (error) {
     console.error('Error initiating scraping:', error);
-    return new Response('Unauthorized', { status: 401 });
+    if (error.message === 'Unauthorized') {
+      return new Response('Unauthorized', { status: 401 });
+    }
+    return new Response('Error initiating scraping', { status: 500 });
   }
 });
 
