@@ -180,9 +180,19 @@ router.post('/api/admin/sites/scrape', async (request: IRequest, env: Env) => {
       return { url: site.url, status: success ? 'completed' : 'failed' };
     });
 
-    const results = await Promise.all(scrapingPromises);
+    const results = await Promise.allSettled(scrapingPromises);
 
-    return new Response(JSON.stringify({ message: 'Scraping initiated', results }), {
+    const successfulScrapes = results.filter(result => result.status === 'fulfilled' && result.value.status === 'completed').map(result => (result as PromiseFulfilledResult<{ url: string, status: string }>).value);
+    const failedScrapes = results.filter(result => result.status === 'fulfilled' && result.value.status === 'failed').map(result => (result as PromiseFulfilledResult<{ url: string, status: string }>).value);
+    const rejectedScrapes = results.filter(result => result.status === 'rejected').map(result => ({ url: 'unknown', status: 'rejected', reason: (result as PromiseRejectedResult).reason }));
+
+
+    return new Response(JSON.stringify({
+      message: 'Scraping process completed',
+      successful: successfulScrapes,
+      failed: failedScrapes,
+      errors: rejectedScrapes,
+    }), {
       headers: { 'Content-Type': 'application/json' },
       status: 200,
     });
