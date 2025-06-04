@@ -27,6 +27,7 @@
     "kysely": "0.28.2",
     "kysely-d1": "0.4.0",
     "marked": "^15.0.12",
+    "nanoid": "^5.1.5",
     "resend": "4.5.0",
     "tailwindcss": "4.1.5"
   },
