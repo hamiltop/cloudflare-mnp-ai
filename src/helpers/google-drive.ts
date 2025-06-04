@@ -208,7 +208,7 @@ export async function getDriveFileCount(
 ): Promise<number> {
   const accessToken = await getAccessToken(env, refreshToken);
   const res = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q='${driveId}' in parents and mimeType='application/vnd.google-apps.document'&fields=files(id)&pageSize=1`,
+    `https://www.googleapis.com/drive/v3/files?q='${driveId}' in parents and (mimeType='application/vnd.google-apps.document' or mimeType='application/pdf' or mimeType='text/plain' or mimeType='application/vnd.openxmlformats-officedocument.wordprocessingml.document')&fields=files(id)&pageSize=1`,
     {
       headers: { Authorization: `Bearer ${accessToken}` },
     },
