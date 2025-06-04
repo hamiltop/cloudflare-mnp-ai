@@ -4,6 +4,7 @@ import { nanoid } from 'nanoid';
 import { createSite, deleteSite, listSites, getSiteByUrl, updateSiteLastScrapedAt } from '@/models/site';
 import { createDocument } from '@/models/document';
 import { requireAuth } from '@/helpers/auth';
+import * as cheerio from 'cheerio';
 
 const router = Router();
 
@@ -33,17 +34,15 @@ async function scrapeAndIngest(url: string, env: Env, retries = 3): Promise<bool
       }
       const html = await response.text();
 
-      // More sophisticated content extraction: try to get text from common content tags
-      // This is still basic and can be improved with a proper HTML parser if available in the environment
-      const titleMatch = html.match(/<title>(.*?)<\/title>/i);
-      const title = titleMatch ? titleMatch[1] : url;
-      const content = (html.match(/<p[^>]*>([\s\S]*?)<\/p>/gi) || [])
-                          .concat(html.match(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/gi) || [])
-                          .concat(html.match(/<li[^>]*>([\s\S]*?)<\/li>/gi) || [])
-                          .map(tag => tag.replace(/<[^>]*>/g, '').trim())
-                          .filter(text => text.length > 0)
-                          .join('\n\n')
-                          .replace(/\s+/g, ' ').trim();
+      const $ = cheerio.load(html);
+      const title = $('title').text() || url;
+
+      // Extract content from common tags, filter out empty strings, and join with newlines
+      const content = $('p, h1, h2, h3, h4, h5, h6, li')
+        .map((i, el) => $(el).text().trim())
+        .get()
+        .filter(text => text.length > 0)
+        .join('\n\n');
 
       if (content.length === 0) {
         console.warn(`No content extracted from ${url}`);
