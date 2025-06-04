@@ -18,49 +18,59 @@ const isValidUrl = (url: string) => {
 };
 
 // Helper function for scraping (placeholder for actual implementation)
-async function scrapeAndIngest(url: string, env: Env): Promise<boolean> {
-  try {
-    console.log(`Attempting to scrape: ${url}`);
-    const response = await fetch(url);
-    if (!response.ok) {
-      console.error(`Failed to fetch ${url}: ${response.statusText}`);
+async function scrapeAndIngest(url: string, env: Env, retries = 3): Promise<boolean> {
+  for (let i = 0; i < retries; i++) {
+    try {
+      console.log(`Attempting to scrape: ${url} (Attempt ${i + 1}/${retries})`);
+      const response = await fetch(url);
+      if (!response.ok) {
+        console.error(`Failed to fetch ${url}: ${response.statusText}`);
+        if (i < retries - 1) {
+          await new Promise(resolve => setTimeout(resolve, 2000 * (i + 1))); // Exponential backoff
+          continue;
+        }
+        return false;
+      }
+      const html = await response.text();
+
+      // More sophisticated content extraction: try to get text from common content tags
+      // This is still basic and can be improved with a proper HTML parser if available in the environment
+      const titleMatch = html.match(/<title>(.*?)<\/title>/i);
+      const title = titleMatch ? titleMatch[1] : url;
+      const content = (html.match(/<p[^>]*>([\s\S]*?)<\/p>/gi) || [])
+                          .concat(html.match(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/gi) || [])
+                          .concat(html.match(/<li[^>]*>([\s\S]*?)<\/li>/gi) || [])
+                          .map(tag => tag.replace(/<[^>]*>/g, '').trim())
+                          .filter(text => text.length > 0)
+                          .join('\n\n')
+                          .replace(/\s+/g, ' ').trim();
+
+      if (content.length === 0) {
+        console.warn(`No content extracted from ${url}`);
+        return false;
+      }
+
+      await createDocument(env, {
+        id: nanoid(),
+        title: `Scraped: ${title}`,
+        content: content,
+        drive_file_id: null,
+        drive_id: null,
+        drive_file_modified_at: null,
+      });
+
+      console.log(`Successfully scraped and ingested: ${url}`);
+      return true;
+    } catch (error) {
+      console.error(`Error scraping ${url}:`, error);
+      if (i < retries - 1) {
+        await new Promise(resolve => setTimeout(resolve, 2000 * (i + 1))); // Exponential backoff
+        continue;
+      }
       return false;
     }
-    const html = await response.text();
-
-    // Basic content extraction (can be improved with a proper parser)
-    const titleMatch = html.match(/<title>(.*?)<\/title>/i);
-    const title = titleMatch ? titleMatch[1] : url;
-    // More sophisticated content extraction: try to get text from common content tags
-    // This is still basic and can be improved with a proper HTML parser if available in the environment
-    const content = (html.match(/<p[^>]*>([\s\S]*?)<\/p>/gi) || [])
-                        .concat(html.match(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/gi) || [])
-                        .concat(html.match(/<li[^>]*>([\s\S]*?)<\/li>/gi) || [])
-                        .map(tag => tag.replace(/<[^>]*>/g, '').trim())
-                        .filter(text => text.length > 0)
-                        .join('\n\n')
-                        .replace(/\s+/g, ' ').trim();
-
-    if (content.length === 0) {
-      console.warn(`No content extracted from ${url}`);
-      return false;
-    }
-
-    await createDocument(env, {
-      id: nanoid(),
-      title: `Scraped: ${title}`,
-      content: content,
-      drive_file_id: null,
-      drive_id: null,
-      drive_file_modified_at: null,
-    });
-
-    console.log(`Successfully scraped and ingested: ${url}`);
-    return true;
-  } catch (error) {
-    console.error(`Error scraping ${url}:`, error);
-    return false;
   }
+  return false; // Should not reach here if retries are exhausted
 }
 
 // Add a new site for scraping
